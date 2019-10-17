@@ -1,0 +1,128 @@
+---
+title: "Sat test Data"
+author: "Jenny Xiao"
+date: "10/15/2019"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    df_print: paged
+    code_folding: hide
+    toc_float: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache=TRUE)
+```
+
+## Info {.tabset}
+
+### Import a XML file into R
+To deal with xml file, we need use XML or xml2 packages.  xml2 has similar goals to the XML package. The main differences are:
+* xml2 takes care of memory management for you. It will automatically free the memory used by an XML document as soon as the last reference to it goes away.
+
+* xml2 has a very simple class hierarchy so don't need to think about exactly what type of object you have, xml2 will just do the right thing.
+
+* More convenient handling of namespaces in Xpath expressions - see xml_ns() and xml_ns_strip() to get started.
+
+I picked XML package and it seems working well.
+
+    
+### Introduce the Weather data set
+[Here you can get a link](https://catalog.data.gov/dataset/local-weather-archive) for downloading the xml data.
+This dataset contains data by school on number of student who participate SAT,participate rate and the percent meeting benchmark of 2012 and 2013.
+There are not categorial variables in this data set. I add two columns of categorial data according the the test_takers_change and the participation_rate_estimate_change
+
+## Data Loading 
+Here is part of the dataset.
+
+```{r results='hide', message=FALSE, warning=FALSE}
+
+library("XML")
+library("methods")
+library(dplyr)
+library(kableExtra)
+library(tidyverse)
+
+
+xmlfile<-xmlParse(file = "satdata.xml")
+my_data<-xmlToDataFrame(node=getNodeSet(xmlfile,"//response/row/row"))
+
+kable(my_data, "html", caption="SAT School Participation and Performance: 2012-2013") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+```
+
+### Categorical summeries and Granph analysis 
+We can see from the plot,for the schools which test_takers rised the partipate_rate_change also rised,no dropps.
+
+```{r}
+# Add two category variable to my dataset
+cate_data<-my_data %>% 
+  mutate(test_t_c=ifelse(my_data$test_takers_change < 0, "Dropped","Rised"))
+
+cate_data<- cate_data %>% mutate(part_r_c=ifelse(my_data$participation_rate_estimate_change < 0, "Dropped","Rised")) %>%
+  drop_na(part_r_c) %>% drop_na(test_t_c)
+
+ggplot(cate_data, aes(x = test_t_c))+ geom_bar() +
+  labs(x = "Test takes changing plot for each school",title = "Comparision on 2013 and 2012 the test takers changing in terms of each school")
+
+
+ggplot(cate_data, aes(x = test_t_c)) + geom_bar(aes(fill=part_r_c),position = "dodge") +
+    labs(x = "Test takers Change",title = "The relation between Rain and wind direction")
+
+```
+
+### Numeric Summaries for some schools
+
+  Here i just picked four variables to do the numeric summary analysis.
+ 
+
+```{r}
+get_numericSummary<-function(x, ...){
+  return(list(round(min(x, na.rm = TRUE),digits=1),
+              round(quantile(x,0.25, na.rm=TRUE,names = FALSE),digits = 1), 
+              round(quantile(x,0.5,na.rm=TRUE,names = FALSE),digits = 1), 
+              round(mean(x, na.rm = TRUE), digits=1), 
+              round(quantile(x,0.75,na.rm=TRUE,names = FALSE), digits = 1),
+              round(max(x, digits=1,na.rm = TRUE),digits = 1)))
+  
+}
+my_data$test_takers_2012 <- as.numeric(as.character(my_data$test_takers_2012))
+my_data$test_takers_2013 <- as.numeric(as.character(my_data$test_takers_2013))
+my_data$percent_meeting_benchmark_2012 <- as.numeric(as.character(my_data$percent_meeting_benchmark_2012))
+my_data$percent_meeting_benchmark_2013 <- as.numeric(as.character(my_data$percent_meeting_benchmark_2013))
+
+a <-get_numericSummary(my_data$test_takers_2012)
+b <-get_numericSummary(my_data$test_takers_2013)
+c <-get_numericSummary(my_data$percent_meeting_benchmark_2012)
+d <-get_numericSummary(my_data$percent_meeting_benchmark_2013)
+
+summary_table <- cbind(a,b,c,d)
+rownames(summary_table) <-c("Min", "1st Qu", "Median", "Mean", "3rd Qu", "Max")
+colnames(summary_table) <-c("test_takers_2012","test_takers_2013","percent_meeting_benchmark_2012","percent_meeting_benchmark_2013")
+kable(summary_table, "html", caption="Summary of Each school") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+
+```
+
+### Scatterplot
+
+Here we use scatterplot show the correlation and regression betwween the test_takers_2012 and test_takers_2012, and also the percent_meeting_benchmark_2013 and percent_meeting_benchmark_2013.
+
+```{r message=FALSE,warning=FALSE}
+
+g <- ggplot(my_data, aes(x = test_takers_2012, y = test_takers_2013))+
+  geom_point( method= lm)
+print(g + ggtitle("2012 test takers capare to the 2013 test takers ")) 
+
+g <- ggplot(my_data, aes(x = percent_meeting_benchmark_2013, y = percent_meeting_benchmark_2012, ))+
+  geom_point() 
+print(g + ggtitle("2013 the pecent meeting benchmark compare to the 2012")) 
+
+```
+
+
+

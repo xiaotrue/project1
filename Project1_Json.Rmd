@@ -1,0 +1,174 @@
+---
+title: "Weather Data in RDU"
+author: "Jenny Xiao"
+date: "10/13/2019"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    df_print: paged
+    code_folding: hide
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache=TRUE)
+```
+
+## Info {.tabset}
+
+### Import a Json file into R
+I use jsonlite package. Rjson, Rjsonio can also do it. Jasonlite package give control over vector silplification.And for numeric digit,  
+RJSONIO uses significant digits, whereas jsonlite uses decimal digits. rjson does not support this.So i like to use the jsonlite package.
+In this project, I shall experiment weather data in the RDU area.  
+[Here you can get a link](https://catalog.data.gov/dataset/sat-school-participation-and-performance-2012-2013/resource/4e1ce31d-bf2a-4150-96b2-bca49f7c1eac) for downloading XML format of this data.
+    
+### Introduce the Weather data set
+The data is the RDU weather data from 1/1/2007 to 10/8/2019. There are 4664 obs and 28 columns.
+I select the categorical variables( thunder,rain,snow,ice,fog,highwind) and quantitative
+variables(temperaturemin,temperturemax,avgwindspeed,fasteat2minwindspeed,fastest5secwinspeed,fastest2minwinddir,fastest5secwinddir).
+The fastest2minwinddir,fastest5secwinddir is 0-360, I will categorize one of it into north,east,south,west.
+
+## Data Loading and Subset Selection
+
+Now, we download the SAT data from the above website.
+It can be observed that the data contains categorical variables such as fogground (YES or No) and dust (YES or NO) and numerical variables such as temperaturemin. 
+
+```{r results='hide', message=FALSE, warning=FALSE}
+
+library("jsonlite")
+library(dplyr)
+library(kableExtra)
+library(tidyverse)
+
+data_URL <-"https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/json"
+weatherData <- fromJSON(data_URL)
+head(weatherData)
+```
+
+
+## Data analysis
+### Creating A New Variable
+
+In what follows, I want to study a subset of the variables and add a new Variable winddir. The following code choose a few variables that I am interested for the following analysis.
+I convert a numerical variable called winddir to a categorical variable. Note that winddir in the original data is a numerical value that ranges from 0 to 360 degrees. Specifically, I want to convert it to four directions: east, west, north and south.
+
+```{r}
+weatherData <- weatherData %>% select(date,thunder,rain,snow,ice,fog,highwind,temperaturemin,temperaturemax,avgwindspeed,fastest2minwindspeed,fastest5secwindspeed,fastest2minwinddir,fastest5secwinddir) %>% mutate(winddir= ceiling(weatherData$fastest2minwinddir/90)) %>% drop_na(winddir)
+weatherData$winddir<- as.factor(weatherData$winddir)
+
+levels(weatherData$winddir)=c("North","East","South","West")
+head(weatherData)
+
+```
+
+### Categorical summeries and Granph analysis on Thunder, Rain, Snow, Ice and Fog 
+
+
+```{r}
+tabthunder<-table(as.factor(weatherData$thunder))
+tabrain <- table(as.factor(weatherData$rain))
+tabsnow <- table(as.factor(weatherData$snow))
+tabice <- table(as.factor(weatherData$ice))
+tabfog <- table(as.factor(weatherData$fog))
+tabhighwind <- table(as.factor(weatherData$highwind))
+tab1 <- cbind(tabthunder,tabrain,tabsnow,tabice,tabfog,tabhighwind)
+
+kable(tab1, "html",caption = "Weather information", col.names = c("Thunder","Rain","Snow","Ice","Fog","Highwind")) %>%
+ kable_styling(bootstrap_options = c("hover"))
+
+
+ggplot(weatherData, aes(x = winddir))+ geom_bar() +
+  labs(x = "2007-2019 wind direction detail",title = "We can see from the plot that from 2007 to 2019,\n the majority wind is come from the South")
+
+
+ggplot(weatherData, aes(x = rain)) + geom_bar(aes(fill=winddir),position = "dodge") +
+    labs(x = "Rain or No Rain",title = "The relation between Rain and wind direction") +
+    scale_x_discrete(labels = c("No Rain", "Rain")) +
+    scale_fill_discrete(name = "Wind Direction") 
+     
+```
+
+### Numeric Summaries by winddir
+The following four tables show the day average windspeed, fastest2minspeed and fastest5secspeed  
+of wind direction in terms of 6 different criteria:   
+```{r }
+
+get_numericSummary<-function(x, ...){
+  return(list(round(min(x, na.rm = TRUE),digits=1),
+              round(quantile(x,0.25, na.rm=TRUE,names = FALSE),digits = 1), 
+              round(quantile(x,0.5,na.rm=TRUE,names = FALSE),digits = 1), 
+              round(mean(x, na.rm = TRUE), digits=1), 
+              round(quantile(x,0.75,na.rm=TRUE,names = FALSE), digits = 1),
+              round(max(x, digits=1,na.rm = TRUE),digits = 1)))
+  
+}
+
+weatherDataSouth <- weatherData[weatherData$winddir == "South",]
+a <-get_numericSummary(weatherDataSouth$fastest2minwindspeed)
+b <-get_numericSummary(weatherDataSouth$fastest5secwindspeed)
+c <-get_numericSummary(weatherDataSouth$avgwindspeed)
+
+summary_table <- cbind(a,b,c)
+rownames(summary_table) <-c("Min", "1st Qu", "Median", "Mean", "3rd Qu", "Max")
+colnames(summary_table) <-c("Fastest2minwindspeed","fastest5secwindspeed","avgwindspeed")
+kable(summary_table, "html", caption="Summary of South wind speed") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+
+weatherDataNorth <- weatherData[weatherData$winddir == "North",]
+a <-get_numericSummary(weatherDataNorth$fastest2minwindspeed)
+b <-get_numericSummary(weatherDataNorth$fastest5secwindspeed)
+c <-get_numericSummary(weatherDataNorth$avgwindspeed)
+
+summary_table <- cbind(a,b,c)
+rownames(summary_table) <-c("Min", "1st Qu", "Median", "Mean", "3rd Qu", "Max")
+colnames(summary_table) <-c("Fastest2minwindspeed","fastest5secwindspeed","avgwindspeed")
+kable(summary_table, "html", caption="Summary of North wind speed") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+
+weatherDataEast <- weatherData[weatherData$winddir == "East",]
+a <-get_numericSummary(weatherDataEast$fastest2minwindspeed)
+b <-get_numericSummary(weatherDataEast$fastest5secwindspeed)
+c <-get_numericSummary(weatherDataEast$avgwindspeed)
+
+summary_table <- cbind(a,b,c)
+rownames(summary_table) <-c("Min", "1st Qu", "Median", "Mean", "3rd Qu", "Max")
+colnames(summary_table) <-c("Fastest2minwindspeed","fastest5secwindspeed","avgwindspeed")
+kable(summary_table, "html", caption="Summary of East wind speed") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+weatherDataWest <- weatherData[weatherData$winddir == "West",]
+a <-get_numericSummary(weatherDataWest$fastest2minwindspeed)
+b <-get_numericSummary(weatherDataWest$fastest5secwindspeed)
+c <-get_numericSummary(weatherDataWest$avgwindspeed)
+
+summary_table <- cbind(a,b,c)
+rownames(summary_table) <-c("Min", "1st Qu", "Median", "Mean", "3rd Qu", "Max")
+colnames(summary_table) <-c("Fastest2minwindspeed","fastest5secwindspeed","avgwindspeed")
+kable(summary_table, "html", caption="Summary of West wind speed") %>%
+  kable_styling(bootstrap_options = c( "hover"))
+
+```
+
+### Boxplot for Comparison
+These two pic use the Box Plot show the distribution of the average wind speed of each wind direction.
+
+
+```{r warning=FALSE}
+g <- ggplot(my_data, aes(x=winddir,y=avgwindspeed))
+
+print(g + geom_boxplot() +  ggtitle("Box Plot for average wind speed"))
+
+```
+
+### Scatterplot for Comparison
+Here we use scatterplot and smooth lines to show the correlation and regression betwween the tempreture and wind speed.
+```{r warning=FALSE}
+g <- ggplot(weatherData, aes(x = temperaturemax, y = avgwindspeed))+
+  geom_point(aes(col=rain)) +  geom_smooth(aes(group = rain), method= lm)
+print(g + ggtitle("Temperature VS Wind speed ")) 
+```
+
+## The End!
